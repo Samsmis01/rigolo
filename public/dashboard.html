@@ -14,7 +14,6 @@
       padding: 20px;
     }
     h1 { color: #4ade80; margin-bottom: 20px; }
-    h2 { color: #60a5fa; margin: 20px 0 10px; font-size: 1.1em; }
     .status-bar {
       background: #1a1f3a;
       padding: 15px;
@@ -34,7 +33,6 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 20px;
-      margin-bottom: 20px;
     }
     .card {
       background: #1a1f3a;
@@ -58,10 +56,8 @@
       color: #0a0e27;
       font-weight: bold;
       cursor: pointer;
-      transition: 0.3s;
     }
     button:hover { background: #22c55e; }
-    button.danger { background: #ef4444; color: white; }
     .list {
       max-height: 300px;
       overflow-y: auto;
@@ -74,7 +70,6 @@
       border-bottom: 1px solid #2a3050;
       font-size: 0.9em;
     }
-    .list-item:last-child { border-bottom: none; }
     .message-item {
       padding: 10px;
       background: #0f1430;
@@ -84,11 +79,10 @@
     }
     .message-item .from { color: #4ade80; font-weight: bold; }
     .message-item .time { color: #6b7280; font-size: 0.8em; }
-    .message-item .body { color: #e0e0e0; margin-top: 5px; }
     .tabs {
       display: flex;
       gap: 10px;
-      margin-bottom: 20px;
+      margin: 20px 0;
       flex-wrap: wrap;
     }
     .tab {
@@ -101,15 +95,29 @@
     .tab.active { background: #4ade80; color: #0a0e27; font-weight: bold; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
+    #keyPrompt {
+      background: #1a1f3a;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      border: 2px solid #fbbf24;
+    }
   </style>
 </head>
 <body>
   <h1>🤖 Bot Control Dashboard</h1>
 
+  <div id="keyPrompt" style="display: none;">
+    <h3 style="color: #fbbf24; margin-bottom: 10px;">🔑 Clé API requise</h3>
+    <p style="margin-bottom: 10px; font-size: 0.9em;">Entrez la clé API pour accéder au dashboard :</p>
+    <input type="password" id="apiKeyInput" placeholder="xenoban-secret-2026">
+    <button onclick="saveApiKey()">Se connecter</button>
+  </div>
+
   <div class="status-bar">
     <div class="status-dot" id="statusDot"></div>
     <span id="statusText">Bot déconnecté</span>
-    <span style="margin-left: auto; color: #6b7280;" id="lastUpdate">-</span>
+    <span style="margin-left: auto; color: #6b7280; font-size: 0.85em;" id="lastUpdate">-</span>
   </div>
 
   <div class="tabs">
@@ -122,27 +130,21 @@
   <div class="tab-content active" id="tab-messages">
     <div class="card">
       <h3>📩 Messages reçus en temps réel</h3>
-      <div class="list" id="messagesList">
-        <p style="color: #6b7280;">En attente de messages...</p>
-      </div>
+      <div class="list" id="messagesList"><p style="color: #6b7280;">En attente...</p></div>
     </div>
   </div>
 
   <div class="tab-content" id="tab-contacts">
     <div class="card">
-      <h3>👥 Contacts du bot (<span id="contactsCount">0</span>)</h3>
-      <div class="list" id="contactsList">
-        <p style="color: #6b7280;">Aucun contact chargé.</p>
-      </div>
+      <h3>👥 Contacts (<span id="contactsCount">0</span>)</h3>
+      <div class="list" id="contactsList"><p style="color: #6b7280;">Aucun contact.</p></div>
     </div>
   </div>
 
   <div class="tab-content" id="tab-groups">
     <div class="card">
-      <h3>📋 Groupes du bot (<span id="groupsCount">0</span>)</h3>
-      <div class="list" id="groupsList">
-        <p style="color: #6b7280;">Aucun groupe chargé.</p>
-      </div>
+      <h3>📋 Groupes (<span id="groupsCount">0</span>)</h3>
+      <div class="list" id="groupsList"><p style="color: #6b7280;">Aucun groupe.</p></div>
     </div>
   </div>
 
@@ -151,27 +153,22 @@
       <div class="card">
         <h3>💬 Envoyer un message</h3>
         <input type="text" id="msgTo" placeholder="Numéro (ex: 243983205767)">
-        <textarea id="msgText" rows="3" placeholder="Votre message..."></textarea>
+        <textarea id="msgText" rows="3" placeholder="Message..."></textarea>
         <button onclick="sendMessage()">📤 Envoyer</button>
       </div>
-
       <div class="card">
         <h3>🔗 Rejoindre un groupe</h3>
-        <input type="text" id="groupLink" placeholder="Lien d'invitation (https://chat.whatsapp.com/...)">
+        <input type="text" id="groupLink" placeholder="https://chat.whatsapp.com/...">
         <button onclick="joinGroup()">➕ Rejoindre</button>
       </div>
-
       <div class="card">
         <h3>📢 Rejoindre une chaîne</h3>
         <input type="text" id="channelLink" placeholder="Lien de la chaîne">
         <button onclick="joinChannel()">➕ Rejoindre</button>
       </div>
-
       <div class="card">
         <h3>📨 Envoyer dans un groupe</h3>
-        <select id="groupSelect">
-          <option value="">-- Choisir un groupe --</option>
-        </select>
+        <select id="groupSelect"><option value="">-- Choisir --</option></select>
         <textarea id="groupMsgText" rows="3" placeholder="Message..."></textarea>
         <button onclick="sendGroupMessage()">📤 Envoyer</button>
       </div>
@@ -180,229 +177,220 @@
 
   <script>
     // ==================== RÉCUPÉRATION DE LA CLÉ API ====================
-    // ⬅️ AJOUT : récupère la clé depuis l'URL ou localStorage
+    // ⚠️ La clé est UNIQUEMENT prise depuis l'URL (pas de localStorage)
+    // Cela évite d'utiliser une ancienne clé mémorisée
     const urlParams = new URLSearchParams(window.location.search);
-    const API_KEY = urlParams.get('key') || localStorage.getItem('apiKey') || 'xenoban-secret-2026';
-    localStorage.setItem('apiKey', API_KEY); // Sauvegarde pour les prochaines visites
-    
-    console.log('🔑 Clé API utilisée:', API_KEY.substring(0, 4) + '...' + API_KEY.slice(-4));
+    let API_KEY = urlParams.get('key');
 
-    // ==================== CONNEXION SOCKET.IO AVEC AUTH ====================
-    // ⬅️ MODIFIÉ : envoie la clé API lors de la connexion
-    const socket = io({
-      auth: { apiKey: API_KEY }
-    });
+    // Si pas de clé dans l'URL → afficher le prompt
+    if (!API_KEY) {
+      document.getElementById('keyPrompt').style.display = 'block';
+      document.getElementById('apiKeyInput').value = 'xenoban-secret-2026';
+    } else {
+      // Nettoyer le localStorage pour éviter les vieilles clés
+      localStorage.removeItem('apiKey');
+      initDashboard(API_KEY);
+    }
 
-    // ⬅️ AJOUT : log de connexion
-    socket.on('connect', () => {
-      console.log('🖥️ Connecté au serveur WebSocket');
-    });
-
-    // ⬅️ AJOUT : gestion des erreurs
-    socket.on('connect_error', (err) => {
-      console.error('❌ Erreur de connexion WebSocket:', err.message);
-      updateBotStatus('deconnecte');
-    });
+    function saveApiKey() {
+      const key = document.getElementById('apiKeyInput').value.trim();
+      if (!key) return alert('Entrez une clé');
+      
+      // Rediriger avec la clé dans l'URL
+      window.location.href = window.location.pathname + '?key=' + encodeURIComponent(key);
+    }
 
     // ==================== INITIALISATION ====================
-    socket.on('init', (data) => {
-      console.log('📦 Données initiales reçues:', data);
-      updateBotStatus(data.botStatus);
-      renderContacts(data.contacts);
-      renderGroups(data.groups);
-      renderMessages(data.messages);
-    });
+    function initDashboard(key) {
+      console.log('🔑 Clé API utilisée:', key.substring(0, 4) + '...' + key.slice(-4));
 
-    // ==================== ÉVÉNEMENTS TEMPS RÉEL ====================
-    socket.on('new-message', (msg) => {
-      console.log('📩 Nouveau message:', msg);
-      addMessage(msg);
-      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-    });
-
-    socket.on('contacts-update', (contacts) => {
-      console.log('👥 Contacts mis à jour:', contacts.length);
-      renderContacts(contacts);
-    });
-
-    socket.on('groups-update', (groups) => {
-      console.log('📋 Groupes mis à jour:', groups.length);
-      renderGroups(groups);
-    });
-
-    socket.on('bot-status', (status) => {
-      console.log('🤖 Statut bot reçu:', status);
-      updateBotStatus(status);
-      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-    });
-
-    socket.on('messages-cleared', () => {
-      document.getElementById('messagesList').innerHTML = '<p style="color: #6b7280;">Historique vidé.</p>';
-    });
-
-    // ==================== AFFICHAGE ====================
-    function updateBotStatus(status) {
-      const dot = document.getElementById('statusDot');
-      const text = document.getElementById('statusText');
-      if (status === 'connecte') {
-        dot.classList.add('online');
-        text.textContent = '🤖 Bot connecté';
-        text.style.color = '#4ade80';
-      } else {
-        dot.classList.remove('online');
-        text.textContent = '⚠️ Bot déconnecté';
-        text.style.color = '#ef4444';
-      }
-    }
-
-    function addMessage(msg) {
-      const list = document.getElementById('messagesList');
-      if (list.querySelector('p')) list.innerHTML = '';
-      
-      const div = document.createElement('div');
-      div.className = 'message-item';
-      div.innerHTML = `
-        <div class="from">${msg.from || 'Inconnu'}</div>
-        <div class="time">${new Date(msg.receivedAt || Date.now()).toLocaleString()}</div>
-        <div class="body">${escapeHtml(msg.body || '(média)')}</div>
-      `;
-      list.prepend(div);
-    }
-
-    function renderMessages(messages) {
-      const list = document.getElementById('messagesList');
-      list.innerHTML = '';
-      if (!messages || messages.length === 0) {
-        list.innerHTML = '<p style="color: #6b7280;">Aucun message.</p>';
-        return;
-      }
-      messages.slice(-50).reverse().forEach(addMessage);
-    }
-
-    function renderContacts(contacts) {
-      document.getElementById('contactsCount').textContent = contacts?.length || 0;
-      const list = document.getElementById('contactsList');
-      list.innerHTML = '';
-      if (!contacts || contacts.length === 0) {
-        list.innerHTML = '<p style="color: #6b7280;">Aucun contact.</p>';
-        return;
-      }
-      contacts.forEach(c => {
-        const div = document.createElement('div');
-        div.className = 'list-item';
-        div.textContent = `${c.name || 'Sans nom'} — ${c.id}`;
-        list.appendChild(div);
+      const socket = io({
+        auth: { apiKey: key }
       });
-    }
 
-    function renderGroups(groups) {
-      document.getElementById('groupsCount').textContent = groups?.length || 0;
-      const list = document.getElementById('groupsList');
-      const select = document.getElementById('groupSelect');
-      list.innerHTML = '';
-      select.innerHTML = '<option value="">-- Choisir un groupe --</option>';
-      
-      if (!groups || groups.length === 0) {
-        list.innerHTML = '<p style="color: #6b7280;">Aucun groupe.</p>';
-        return;
-      }
-      groups.forEach(g => {
-        const div = document.createElement('div');
-        div.className = 'list-item';
-        div.textContent = `${g.subject} — ${g.id}`;
-        list.appendChild(div);
-        
-        const opt = document.createElement('option');
-        opt.value = g.id;
-        opt.textContent = g.subject;
-        select.appendChild(opt);
+      socket.on('connect', () => {
+        console.log('🖥️ Connecté au serveur WebSocket');
+        document.getElementById('keyPrompt').style.display = 'none';
       });
-    }
 
-    // ==================== ACTIONS ====================
-    // ⬅️ AJOUT : fonction utilitaire avec la clé API
-    async function apiCall(endpoint, data) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': API_KEY  // ⬅️ Ajout de la clé API
-          },
-          body: JSON.stringify(data)
+      socket.on('connect_error', (err) => {
+        console.error('❌ Erreur de connexion:', err.message);
+        alert('❌ Clé API invalide ou serveur non joignable');
+      });
+
+      socket.on('init', (data) => {
+        console.log('📦 Données initiales reçues');
+        updateBotStatus(data.botStatus);
+        renderContacts(data.contacts);
+        renderGroups(data.groups);
+        renderMessages(data.messages);
+      });
+
+      socket.on('new-message', (msg) => {
+        addMessage(msg);
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+      });
+
+      socket.on('contacts-update', renderContacts);
+      socket.on('groups-update', renderGroups);
+      
+      socket.on('bot-status', (status) => {
+        console.log('🤖 Statut reçu:', status);
+        updateBotStatus(status);
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+      });
+
+      socket.on('messages-cleared', () => {
+        document.getElementById('messagesList').innerHTML = '<p style="color: #6b7280;">Vidé.</p>';
+      });
+
+      // ==================== AFFICHAGE ====================
+      window.updateBotStatus = function(status) {
+        const dot = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        if (status === 'connecte') {
+          dot.classList.add('online');
+          text.textContent = '🤖 Bot connecté';
+          text.style.color = '#4ade80';
+        } else {
+          dot.classList.remove('online');
+          text.textContent = '⚠️ Bot déconnecté';
+          text.style.color = '#ef4444';
+        }
+      };
+
+      window.addMessage = function(msg) {
+        const list = document.getElementById('messagesList');
+        if (list.querySelector('p')) list.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = 'message-item';
+        div.innerHTML = `
+          <div class="from">${msg.from || 'Inconnu'}</div>
+          <div class="time">${new Date(msg.receivedAt || Date.now()).toLocaleString()}</div>
+          <div class="body">${escapeHtml(msg.body || '(média)')}</div>
+        `;
+        list.prepend(div);
+      };
+
+      window.renderMessages = function(messages) {
+        const list = document.getElementById('messagesList');
+        list.innerHTML = '';
+        if (!messages || messages.length === 0) {
+          list.innerHTML = '<p style="color: #6b7280;">Aucun message.</p>';
+          return;
+        }
+        messages.slice().reverse().forEach(addMessage);
+      };
+
+      window.renderContacts = function(contacts) {
+        document.getElementById('contactsCount').textContent = contacts?.length || 0;
+        const list = document.getElementById('contactsList');
+        list.innerHTML = '';
+        if (!contacts || contacts.length === 0) {
+          list.innerHTML = '<p style="color: #6b7280;">Aucun contact.</p>';
+          return;
+        }
+        contacts.forEach(c => {
+          const div = document.createElement('div');
+          div.className = 'list-item';
+          div.textContent = `${c.name || 'Sans nom'} — ${c.id}`;
+          list.appendChild(div);
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Erreur inconnue');
-        return json;
-      } catch (e) {
-        alert('❌ ' + e.message);
-        return null;
-      }
-    }
+      };
 
-    async function sendMessage() {
-      const to = document.getElementById('msgTo').value.trim();
-      const text = document.getElementById('msgText').value.trim();
-      if (!to || !text) return alert('Remplissez tous les champs');
-      
-      const res = await apiCall('/api/send/message', { to, text });
-      if (res) {
-        alert('✅ Commande envoyée !');
-        document.getElementById('msgText').value = '';
-      }
-    }
+      window.renderGroups = function(groups) {
+        document.getElementById('groupsCount').textContent = groups?.length || 0;
+        const list = document.getElementById('groupsList');
+        const select = document.getElementById('groupSelect');
+        list.innerHTML = '';
+        select.innerHTML = '<option value="">-- Choisir --</option>';
+        if (!groups || groups.length === 0) {
+          list.innerHTML = '<p style="color: #6b7280;">Aucun groupe.</p>';
+          return;
+        }
+        groups.forEach(g => {
+          const div = document.createElement('div');
+          div.className = 'list-item';
+          div.textContent = `${g.subject} — ${g.id}`;
+          list.appendChild(div);
+          const opt = document.createElement('option');
+          opt.value = g.id;
+          opt.textContent = g.subject;
+          select.appendChild(opt);
+        });
+      };
 
-    async function joinGroup() {
-      const inviteCode = document.getElementById('groupLink').value.trim();
-      if (!inviteCode) return alert('Entrez un lien');
-      
-      const res = await apiCall('/api/join/group', { inviteCode });
-      if (res) alert('✅ Commande envoyée !');
-    }
+      // ==================== API CALLS ====================
+      window.apiCall = async function(endpoint, data) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': key
+            },
+            body: JSON.stringify(data)
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'Erreur');
+          return json;
+        } catch (e) {
+          alert('❌ ' + e.message);
+          return null;
+        }
+      };
 
-    async function joinChannel() {
-      const channelLink = document.getElementById('channelLink').value.trim();
-      if (!channelLink) return alert('Entrez un lien');
-      
-      const res = await apiCall('/api/join/channel', { channelLink });
-      if (res) alert('✅ Commande envoyée !');
-    }
+      window.sendMessage = async function() {
+        const to = document.getElementById('msgTo').value.trim();
+        const text = document.getElementById('msgText').value.trim();
+        if (!to || !text) return alert('Remplissez tous les champs');
+        const res = await apiCall('/api/send/message', { to, text });
+        if (res) { alert('✅ Envoyé !'); document.getElementById('msgText').value = ''; }
+      };
 
-    async function sendGroupMessage() {
-      const groupId = document.getElementById('groupSelect').value;
-      const text = document.getElementById('groupMsgText').value.trim();
-      if (!groupId || !text) return alert('Choisissez un groupe et entrez un message');
-      
-      const res = await apiCall('/api/send/group', { groupId, text });
-      if (res) {
-        alert('✅ Commande envoyée !');
-        document.getElementById('groupMsgText').value = '';
-      }
-    }
+      window.joinGroup = async function() {
+        const inviteCode = document.getElementById('groupLink').value.trim();
+        if (!inviteCode) return alert('Entrez un lien');
+        const res = await apiCall('/api/join/group', { inviteCode });
+        if (res) alert('✅ Envoyé !');
+      };
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+      window.joinChannel = async function() {
+        const channelLink = document.getElementById('channelLink').value.trim();
+        if (!channelLink) return alert('Entrez un lien');
+        const res = await apiCall('/api/join/channel', { channelLink });
+        if (res) alert('✅ Envoyé !');
+      };
 
-    // ==================== TABS ====================
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      window.sendGroupMessage = async function() {
+        const groupId = document.getElementById('groupSelect').value;
+        const text = document.getElementById('groupMsgText').value.trim();
+        if (!groupId || !text) return alert('Choisissez un groupe');
+        const res = await apiCall('/api/send/group', { groupId, text });
+        if (res) { alert('✅ Envoyé !'); document.getElementById('groupMsgText').value = ''; }
+      };
+
+      window.escapeHtml = function(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      };
+
+      // ==================== TABS ====================
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        });
       });
-    });
 
-    // ==================== HEARTBEAT ====================
-    // ⬅️ AJOUT : envoie un ping toutes les 30s pour maintenir la connexion
-    setInterval(() => {
-      if (socket.connected) {
-        socket.emit('bot-heartbeat');
-      }
-    }, 30000);
+      // ==================== HEARTBEAT ====================
+      setInterval(() => {
+        if (socket.connected) socket.emit('bot-heartbeat');
+      }, 30000);
+    }
   </script>
 </body>
 </html>

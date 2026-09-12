@@ -8,8 +8,8 @@ const path = require('path');
 
 // ==================== CONFIGURATION ====================
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || 'hexgate-secret-2026'; // ⚠️ Changez cette clé !
-const STATIC_FOLDER = 'public'; // ⚠️ Correspond au nom du dossier sur GitHub
+const API_KEY = process.env.API_KEY || 'xenoban-secret-2026'; // ⚠️ Corrigé : même clé que le bot
+const STATIC_FOLDER = 'public';
 
 // ==================== INITIALISATION ====================
 const app = express();
@@ -20,24 +20,23 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  maxHttpBufferSize: 1e8 // 100 Mo pour les gros médias
+  maxHttpBufferSize: 1e8
 });
 
 // ==================== MIDDLEWARES ====================
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servir les fichiers statiques depuis le dossier "publique"
+// Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, STATIC_FOLDER)));
 
 // Middleware de sécurité : vérifie la clé API pour les routes /api/
 app.use((req, res, next) => {
-  // Laisser passer les fichiers statiques
   if (!req.path.startsWith('/api/')) return next();
   
   const providedKey = req.headers['x-api-key'];
   if (providedKey !== API_KEY) {
-    console.log(`⚠️ Tentative d'accès non autorisée depuis ${req.ip} sur ${req.path}`);
+    console.log(`⚠️ Accès refusé (clé invalide) depuis ${req.ip} sur ${req.path}`);
     return res.status(401).json({ error: 'Non autorisé : clé API invalide' });
   }
   next();
@@ -54,16 +53,14 @@ const dataStore = {
   startedAt: Date.now()
 };
 
-const MAX_MESSAGES = 500; // Limite pour éviter la surcharge mémoire
+const MAX_MESSAGES = 500;
 
 // ==================== ROUTES DE BASE ====================
 
-// Page d'accueil (redirige vers le dashboard)
 app.get('/', (req, res) => {
   res.redirect(`/${STATIC_FOLDER}/dashboard.html`);
 });
 
-// Route de santé (utile pour UptimeRobot)
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -75,7 +72,6 @@ app.get('/health', (req, res) => {
 
 // ==================== API POUR LE BOT ====================
 
-// Le bot envoie un message
 app.post('/api/bot/message', (req, res) => {
   try {
     const message = req.body;
@@ -84,13 +80,11 @@ app.post('/api/bot/message', (req, res) => {
     }
     
     dataStore.messages.push({ ...message, receivedAt: Date.now() });
-    
-    // Limiter la taille de l'historique
     if (dataStore.messages.length > MAX_MESSAGES) {
       dataStore.messages = dataStore.messages.slice(-MAX_MESSAGES);
     }
     
-    console.log(`📩 Message reçu de ${message.from}: ${(message.body || '').substring(0, 50)}`);
+    console.log(`📩 Message reçu de ${message.from}`);
     io.emit('new-message', message);
     res.json({ success: true });
   } catch (e) {
@@ -99,7 +93,6 @@ app.post('/api/bot/message', (req, res) => {
   }
 });
 
-// Le bot envoie la liste des contacts
 app.post('/api/bot/contacts', (req, res) => {
   try {
     dataStore.contacts = req.body.contacts || [];
@@ -107,12 +100,10 @@ app.post('/api/bot/contacts', (req, res) => {
     io.emit('contacts-update', dataStore.contacts);
     res.json({ success: true });
   } catch (e) {
-    console.error('❌ Erreur /api/bot/contacts:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// Le bot envoie la liste des groupes
 app.post('/api/bot/groups', (req, res) => {
   try {
     dataStore.groups = req.body.groups || [];
@@ -120,17 +111,16 @@ app.post('/api/bot/groups', (req, res) => {
     io.emit('groups-update', dataStore.groups);
     res.json({ success: true });
   } catch (e) {
-    console.error('❌ Erreur /api/bot/groups:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// Le bot signale son statut
 app.post('/api/bot/status', (req, res) => {
   try {
     dataStore.botStatus = req.body.status || 'inconnu';
     dataStore.lastPing = Date.now();
     io.emit('bot-status', dataStore.botStatus);
+    console.log(`🤖 Statut bot mis à jour : ${dataStore.botStatus}`);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -139,7 +129,6 @@ app.post('/api/bot/status', (req, res) => {
 
 // ==================== API POUR LE DASHBOARD ====================
 
-// Récupérer toutes les données
 app.get('/api/data', (req, res) => {
   res.json({
     messages: dataStore.messages.slice(-50),
@@ -151,7 +140,6 @@ app.get('/api/data', (req, res) => {
   });
 });
 
-// Envoyer un message depuis le dashboard
 app.post('/api/send/message', (req, res) => {
   const { to, text } = req.body;
   if (!to || !text) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -161,7 +149,6 @@ app.post('/api/send/message', (req, res) => {
   res.json({ success: true });
 });
 
-// Rejoindre un groupe
 app.post('/api/join/group', (req, res) => {
   const { inviteCode } = req.body;
   if (!inviteCode) return res.status(400).json({ error: 'Code manquant' });
@@ -170,7 +157,6 @@ app.post('/api/join/group', (req, res) => {
   res.json({ success: true });
 });
 
-// Quitter un groupe
 app.post('/api/leave/group', (req, res) => {
   const { groupId } = req.body;
   if (!groupId) return res.status(400).json({ error: 'groupId manquant' });
@@ -179,7 +165,6 @@ app.post('/api/leave/group', (req, res) => {
   res.json({ success: true });
 });
 
-// Rejoindre une chaîne
 app.post('/api/join/channel', (req, res) => {
   const { channelLink } = req.body;
   if (!channelLink) return res.status(400).json({ error: 'Lien manquant' });
@@ -188,7 +173,6 @@ app.post('/api/join/channel', (req, res) => {
   res.json({ success: true });
 });
 
-// Envoyer un message à un groupe
 app.post('/api/send/group', (req, res) => {
   const { groupId, text } = req.body;
   if (!groupId || !text) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -197,7 +181,6 @@ app.post('/api/send/group', (req, res) => {
   res.json({ success: true });
 });
 
-// Vider l'historique des messages
 app.post('/api/clear/messages', (req, res) => {
   dataStore.messages = [];
   io.emit('messages-cleared');
@@ -239,12 +222,23 @@ io.on('connection', (socket) => {
   // Heartbeat du bot
   socket.on('bot-heartbeat', () => {
     dataStore.lastPing = Date.now();
+    // Renvoyer le statut actuel (au cas où le dashboard aurait raté l'événement)
+    socket.emit('bot-status', dataStore.botStatus);
   });
   
   socket.on('disconnect', () => {
     console.log(`🖥️ Client déconnecté : ${socket.id}`);
   });
 });
+
+// ==================== BROADCAST PÉRIODIQUE DU STATUT ====================
+// ⬅️ AJOUT : envoie le statut actuel à tous les clients toutes les 5 secondes
+// Cela garantit que le dashboard est toujours à jour, même s'il rate un événement
+setInterval(() => {
+  if (dataStore.botStatus) {
+    io.emit('bot-status', dataStore.botStatus);
+  }
+}, 5000);
 
 // ==================== DÉMARRAGE ====================
 server.listen(PORT, '0.0.0.0', () => {

@@ -64,6 +64,10 @@
       font-family: inherit;
       font-size: 0.9em;
     }
+    input[type="file"] {
+      padding: 6px;
+      font-size: 0.8em;
+    }
     button {
       padding: 12px 20px;
       background: #4ade80;
@@ -115,6 +119,37 @@
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 15px;
     }
+    .card-actions {
+      border: 1px solid #2a3050;
+      border-radius: 8px;
+      padding: 12px;
+      background: #0f1430;
+    }
+    .card-actions h4 {
+      color: #60a5fa;
+      font-size: 0.9em;
+      margin-bottom: 10px;
+    }
+    label {
+      font-size: 0.85em;
+      color: #94a3b8;
+      display: block;
+      margin-top: 5px;
+    }
+    .photo-preview {
+      max-width: 100%;
+      max-height: 150px;
+      border-radius: 6px;
+      margin-top: 5px;
+      display: none;
+    }
+    .section-title {
+      color: #f472b6;
+      font-size: 1.1em;
+      margin: 20px 0 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #2a3050;
+    }
   </style>
 </head>
 <body>
@@ -139,34 +174,134 @@
   </div>
 
   <div class="card">
+    <h3>👁️ Vues uniques (<span id="voCount">0</span>)</h3>
+    <div class="list" id="viewOnceList">
+      <div class="item">Aucune vue unique</div>
+    </div>
+  </div>
+
+  <!-- ==================== ACTIONS EXISTANTES ==================== -->
+  <div class="card">
     <h3>⚡ Actions</h3>
     <div class="grid">
-      <div>
-        <label style="font-size:0.85em; color:#94a3b8;">💬 Envoyer un message</label>
+      <div class="card-actions">
+        <h4>💬 Envoyer un message</h4>
         <input type="text" id="msgTo" placeholder="Numéro (ex: 243983205767)">
         <textarea id="msgText" rows="2" placeholder="Message..."></textarea>
         <button onclick="sendMessage()">📤 Envoyer</button>
       </div>
-      <div>
-        <label style="font-size:0.85em; color:#94a3b8;">🔗 Rejoindre un groupe</label>
+      <div class="card-actions">
+        <h4>🔗 Rejoindre un groupe</h4>
         <input type="text" id="groupLink" placeholder="https://chat.whatsapp.com/...">
         <button onclick="joinGroup()">➕ Rejoindre</button>
       </div>
-      <div>
-        <label style="font-size:0.85em; color:#94a3b8;">📢 Rejoindre une chaîne</label>
+      <div class="card-actions">
+        <h4>📢 Rejoindre une chaîne</h4>
         <input type="text" id="channelLink" placeholder="https://whatsapp.com/channel/...">
         <button onclick="joinChannel()">➕ Rejoindre</button>
       </div>
-      <div>
-        <label style="font-size:0.85em; color:#94a3b8;">📨 Envoyer dans un groupe</label>
+      <div class="card-actions">
+        <h4>📨 Envoyer dans un groupe</h4>
         <select id="groupSelect"><option value="">-- Choisir un groupe --</option></select>
         <textarea id="groupMsgText" rows="2" placeholder="Message..."></textarea>
         <button onclick="sendGroupMessage()">📤 Envoyer</button>
       </div>
-      <div>
-        <label style="font-size:0.85em; color:#94a3b8;">🚪 Quitter un groupe</label>
+      <div class="card-actions">
+        <h4>🚪 Quitter un groupe</h4>
         <select id="leaveGroupSelect"><option value="">-- Choisir un groupe --</option></select>
         <button onclick="leaveGroup()" style="background:#ef4444; color:white;">🚪 Quitter</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== NOUVELLES ACTIONS ==================== -->
+  <h2 class="section-title">🚀 Actions Avancées</h2>
+
+  <div class="card">
+    <h3>🛠️ Gestion des groupes</h3>
+    <div class="grid">
+      <!-- Créer un groupe -->
+      <div class="card-actions">
+        <h4>🆕 Créer un groupe</h4>
+        <label>Nom du groupe</label>
+        <input type="text" id="createGroupName" placeholder="Mon nouveau groupe">
+        <label>Numéros des membres (séparés par virgule)</label>
+        <input type="text" id="createGroupMembers" placeholder="243983205767, 243816107573">
+        <button onclick="createGroup()">✨ Créer le groupe</button>
+      </div>
+
+      <!-- Ajouter un membre -->
+      <div class="card-actions">
+        <h4>➕ Ajouter un membre</h4>
+        <select id="addMemberGroup"><option value="">-- Groupe --</option></select>
+        <input type="text" id="addMemberNumber" placeholder="Numéro (ex: 243983205767)">
+        <button onclick="addMember()">➕ Ajouter</button>
+      </div>
+
+      <!-- Promouvoir admin -->
+      <div class="card-actions">
+        <h4>👑 Promouvoir admin</h4>
+        <select id="promoteGroup"><option value="">-- Groupe --</option></select>
+        <input type="text" id="promoteNumber" placeholder="Numéro à promouvoir">
+        <button onclick="promoteAdmin()">👑 Promouvoir</button>
+      </div>
+
+      <!-- Retirer admin -->
+      <div class="card-actions">
+        <h4>⬇️ Retirer admin</h4>
+        <select id="demoteGroup"><option value="">-- Groupe --</option></select>
+        <input type="text" id="demoteNumber" placeholder="Numéro à rétrograder">
+        <button onclick="demoteAdmin()" style="background:#f59e0b; color:white;">⬇️ Rétrograder</button>
+      </div>
+
+      <!-- Expulser -->
+      <div class="card-actions">
+        <h4>🚷 Expulser un membre</h4>
+        <select id="kickGroup"><option value="">-- Groupe --</option></select>
+        <input type="text" id="kickNumber" placeholder="Numéro à expulser">
+        <button onclick="kickMember()" style="background:#ef4444; color:white;">🚷 Expulser</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📢 Statuts & Chaînes</h3>
+    <div class="grid">
+      <!-- Statut texte -->
+      <div class="card-actions">
+        <h4>📝 Statut texte</h4>
+        <textarea id="statusText" rows="3" placeholder="Votre statut..."></textarea>
+        <button onclick="postStatus('text')">📤 Publier</button>
+      </div>
+
+      <!-- Statut avec image -->
+      <div class="card-actions">
+        <h4>🖼️ Statut avec image</h4>
+        <label>Image</label>
+        <input type="file" id="statusImage" accept="image/*">
+        <label>Légende (optionnel)</label>
+        <input type="text" id="statusImageCaption" placeholder="Légende...">
+        <button onclick="postStatus('image')">📤 Publier</button>
+      </div>
+
+      <!-- Statut avec vidéo -->
+      <div class="card-actions">
+        <h4>🎥 Statut avec vidéo</h4>
+        <label>Vidéo</label>
+        <input type="file" id="statusVideo" accept="video/*">
+        <label>Légende (optionnel)</label>
+        <input type="text" id="statusVideoCaption" placeholder="Légende...">
+        <button onclick="postStatus('video')">📤 Publier</button>
+      </div>
+
+      <!-- Diffuser dans une chaîne -->
+      <div class="card-actions">
+        <h4>📢 Diffuser dans une chaîne</h4>
+        <label>Lien de la chaîne</label>
+        <input type="text" id="broadcastChannelLink" placeholder="https://whatsapp.com/channel/...">
+        <label>Message à diffuser</label>
+        <textarea id="broadcastText" rows="2" placeholder="Message..."></textarea>
+        <button onclick="broadcastChannel()">📢 Diffuser</button>
       </div>
     </div>
   </div>
@@ -228,6 +363,7 @@
       updateStatus(data.botStatus);
       renderGroups(data.groups);
       renderMessages(data.messages);
+      loadViewOnce();
     });
 
     socket.on('bot-status', (status) => {
@@ -240,10 +376,15 @@
       addMessageToTop(msg);
     });
 
+    socket.on('new-viewonce', (data) => {
+      console.log('📸 Nouvelle vue unique:', data);
+      toast('📸 Nouvelle vue unique reçue !');
+      loadViewOnce();
+    });
+
     socket.on('groups-update', renderGroups);
     socket.on('contacts-update', () => {});
     
-    // Heartbeat toutes les 30s
     setInterval(() => {
       if (socket.connected) socket.emit('bot-heartbeat');
     }, 30000);
@@ -267,12 +408,18 @@
     function renderGroups(groups) {
       document.getElementById('gCount').textContent = groups?.length || 0;
       const list = document.getElementById('groupsList');
-      const select = document.getElementById('groupSelect');
-      const leaveSelect = document.getElementById('leaveGroupSelect');
+      
+      // Tous les sélecteurs de groupe
+      const selects = [
+        'groupSelect', 'leaveGroupSelect', 'addMemberGroup',
+        'promoteGroup', 'demoteGroup', 'kickGroup'
+      ];
       
       list.innerHTML = '';
-      select.innerHTML = '<option value="">-- Choisir un groupe --</option>';
-      leaveSelect.innerHTML = '<option value="">-- Choisir un groupe --</option>';
+      selects.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<option value="">-- Choisir un groupe --</option>';
+      });
       
       if (!groups || groups.length === 0) {
         list.innerHTML = '<div class="item">Aucun groupe</div>';
@@ -280,23 +427,22 @@
       }
       
       groups.forEach(g => {
-        // Liste
+        // Liste principale
         const div = document.createElement('div');
         div.className = 'item';
         div.innerHTML = `<div class="from">${g.subject || '?'}</div><div class="body" style="font-size:0.75em; color:#6b7280;">${g.id}</div>`;
         list.appendChild(div);
         
-        // Select pour envoyer
-        const opt = document.createElement('option');
-        opt.value = g.id;
-        opt.textContent = g.subject;
-        select.appendChild(opt);
-        
-        // Select pour quitter
-        const opt2 = document.createElement('option');
-        opt2.value = g.id;
-        opt2.textContent = g.subject;
-        leaveSelect.appendChild(opt2);
+        // Tous les selects
+        selects.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            const opt = document.createElement('option');
+            opt.value = g.id;
+            opt.textContent = g.subject;
+            el.appendChild(opt);
+          }
+        });
       });
     }
 
@@ -337,6 +483,82 @@
       return div.innerHTML;
     }
 
+    // ==================== VUES UNIQUES ====================
+    async function loadViewOnce() {
+      try {
+        const res = await fetch('/api/viewonce/list', {
+          headers: { 'x-api-key': API_KEY }
+        });
+        if (!res.ok) return;
+        const list = await res.json();
+        
+        document.getElementById('voCount').textContent = list.length;
+        const container = document.getElementById('viewOnceList');
+        container.innerHTML = '';
+        
+        if (list.length === 0) {
+          container.innerHTML = '<div class="item">Aucune vue unique</div>';
+          return;
+        }
+        
+        list.slice().reverse().forEach(v => {
+          const div = document.createElement('div');
+          div.className = 'item';
+          div.innerHTML = `
+            <div class="from">👤 ${escapeHtml(v.sender || 'Inconnu')}</div>
+            <div class="body" style="font-size:0.8em; color:#94a3b8;">
+              ${v.type === 'image' ? '🖼️ Image' : '🎥 Vidéo'} 
+              ${v.caption ? '- ' + escapeHtml(v.caption) : ''}
+            </div>
+            <button onclick="showViewOnce('${v.id}')" style="margin-top:5px; padding:6px; font-size:0.8em;">
+              👁️ Voir
+            </button>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        console.error('Erreur vues uniques:', e);
+      }
+    }
+
+    async function showViewOnce(id) {
+      try {
+        const res = await fetch(`/api/viewonce/${id}`, {
+          headers: { 'x-api-key': API_KEY }
+        });
+        if (!res.ok) throw new Error('Non trouvé');
+        const data = await res.json();
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+          background: rgba(0,0,0,0.95); z-index: 10000;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          padding: 20px; overflow: auto;
+        `;
+        
+        const mediaSrc = `data:${data.type === 'image' ? 'image/jpeg' : 'video/mp4'};base64,${data.buffer}`;
+        
+        modal.innerHTML = `
+          <div style="color:#4ade80; margin-bottom:10px; font-size:1.1em; text-align:center;">
+            👤 ${escapeHtml(data.sender)} - ${new Date(data.time).toLocaleString()}
+          </div>
+          ${data.type === 'image' 
+            ? `<img src="${mediaSrc}" style="max-width:100%; max-height:70vh; border-radius:8px;">`
+            : `<video src="${mediaSrc}" controls autoplay style="max-width:100%; max-height:70vh; border-radius:8px;"></video>`
+          }
+          ${data.caption ? `<div style="color:#fbbf24; margin-top:10px; text-align:center;">📝 ${escapeHtml(data.caption)}</div>` : ''}
+          <button onclick="this.parentElement.remove()" style="margin-top:20px; max-width:200px; background:#ef4444; color:white;">
+            ❌ Fermer
+          </button>
+        `;
+        
+        document.body.appendChild(modal);
+      } catch (e) {
+        toast('❌ Erreur: ' + e.message, true);
+      }
+    }
+
     // ==================== REFRESH HTTP ====================
     async function refreshData() {
       attempts++;
@@ -355,13 +577,14 @@
         updateStatus(data.botStatus);
         renderGroups(data.groups);
         renderMessages(data.messages);
+        loadViewOnce();
         
       } catch (e) {
         debugEl.textContent = `❌ Tentative #${attempts} - ${e.message}`;
       }
     }
 
-    // ==================== ACTIONS ====================
+    // ==================== ACTIONS EXISTANTES ====================
     async function sendMessage() {
       const to = document.getElementById('msgTo').value.trim();
       const text = document.getElementById('msgText').value.trim();
@@ -419,6 +642,137 @@
         toast('✅ Groupe quitté !');
         setTimeout(refreshData, 2000);
       }
+    }
+
+    // ==================== NOUVELLES ACTIONS ====================
+
+    // Créer un groupe
+    async function createGroup() {
+      const name = document.getElementById('createGroupName').value.trim();
+      const membersStr = document.getElementById('createGroupMembers').value.trim();
+      if (!name) return toast('Entrez un nom de groupe', true);
+      if (!membersStr) return toast('Entrez au moins un numéro', true);
+      
+      const members = membersStr.split(',').map(m => m.trim()).filter(m => m);
+      const res = await apiCall('/api/group/create', { name, members });
+      if (res) {
+        toast('✅ Groupe créé !');
+        document.getElementById('createGroupName').value = '';
+        document.getElementById('createGroupMembers').value = '';
+        setTimeout(refreshData, 2000);
+      }
+    }
+
+    // Ajouter un membre
+    async function addMember() {
+      const groupId = document.getElementById('addMemberGroup').value;
+      const number = document.getElementById('addMemberNumber').value.trim();
+      if (!groupId || !number) return toast('Remplissez tous les champs', true);
+      
+      const res = await apiCall('/api/group/add', { groupId, number });
+      if (res) {
+        toast('✅ Membre ajouté !');
+        document.getElementById('addMemberNumber').value = '';
+      }
+    }
+
+    // Promouvoir admin
+    async function promoteAdmin() {
+      const groupId = document.getElementById('promoteGroup').value;
+      const number = document.getElementById('promoteNumber').value.trim();
+      if (!groupId || !number) return toast('Remplissez tous les champs', true);
+      
+      const res = await apiCall('/api/group/promote', { groupId, number });
+      if (res) {
+        toast('✅ Admin promu !');
+        document.getElementById('promoteNumber').value = '';
+      }
+    }
+
+    // Rétrograder admin
+    async function demoteAdmin() {
+      const groupId = document.getElementById('demoteGroup').value;
+      const number = document.getElementById('demoteNumber').value.trim();
+      if (!groupId || !number) return toast('Remplissez tous les champs', true);
+      
+      const res = await apiCall('/api/group/demote', { groupId, number });
+      if (res) {
+        toast('✅ Admin rétrogradé !');
+        document.getElementById('demoteNumber').value = '';
+      }
+    }
+
+    // Expulser un membre
+    async function kickMember() {
+      const groupId = document.getElementById('kickGroup').value;
+      const number = document.getElementById('kickNumber').value.trim();
+      if (!groupId || !number) return toast('Remplissez tous les champs', true);
+      if (!confirm('Expulser ce membre ?')) return;
+      
+      const res = await apiCall('/api/group/kick', { groupId, number });
+      if (res) {
+        toast('✅ Membre expulsé !');
+        document.getElementById('kickNumber').value = '';
+      }
+    }
+
+    // Publier un statut
+    async function postStatus(type) {
+      let data = { type };
+      
+      if (type === 'text') {
+        const text = document.getElementById('statusText').value.trim();
+        if (!text) return toast('Entrez un texte', true);
+        data.text = text;
+      } else if (type === 'image') {
+        const file = document.getElementById('statusImage').files[0];
+        if (!file) return toast('Choisissez une image', true);
+        data.buffer = await fileToBase64(file);
+        data.mimetype = file.type;
+        data.caption = document.getElementById('statusImageCaption').value.trim();
+      } else if (type === 'video') {
+        const file = document.getElementById('statusVideo').files[0];
+        if (!file) return toast('Choisissez une vidéo', true);
+        data.buffer = await fileToBase64(file);
+        data.mimetype = file.type;
+        data.caption = document.getElementById('statusVideoCaption').value.trim();
+      }
+      
+      const res = await apiCall('/api/status/post', data);
+      if (res) {
+        toast('✅ Statut publié !');
+        document.getElementById('statusText').value = '';
+        document.getElementById('statusImage').value = '';
+        document.getElementById('statusImageCaption').value = '';
+        document.getElementById('statusVideo').value = '';
+        document.getElementById('statusVideoCaption').value = '';
+      }
+    }
+
+    // Diffuser dans une chaîne
+    async function broadcastChannel() {
+      const channelLink = document.getElementById('broadcastChannelLink').value.trim();
+      const text = document.getElementById('broadcastText').value.trim();
+      if (!channelLink || !text) return toast('Remplissez tous les champs', true);
+      
+      const res = await apiCall('/api/channel/broadcast', { channelLink, text });
+      if (res) {
+        toast('✅ Message diffusé !');
+        document.getElementById('broadcastText').value = '';
+      }
+    }
+
+    // Convertir un fichier en base64
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
 
     // ==================== DÉMARRAGE ====================

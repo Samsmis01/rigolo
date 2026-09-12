@@ -8,7 +8,7 @@ const path = require('path');
 
 // ==================== CONFIGURATION ====================
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.API_KEY || 'xenoban-secret-2026'; // ⚠️ Corrigé : même clé que le bot
+const API_KEY = process.env.API_KEY || 'xenoban-secret-2026';
 const STATIC_FOLDER = 'public';
 
 // ==================== INITIALISATION ====================
@@ -20,7 +20,7 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  maxHttpBufferSize: 1e8
+  maxHttpBufferSize: 1e8 // 100 Mo
 });
 
 // ==================== MIDDLEWARES ====================
@@ -55,6 +55,14 @@ const dataStore = {
 
 const MAX_MESSAGES = 500;
 
+// ==================== STOCKAGE DES VUES UNIQUES ====================
+const viewOnceStore = [];
+const MAX_VIEW_ONCE = 50;
+
+// ==================== STOCKAGE DES REQUÊTES EN ATTENTE ====================
+// Pour les réponses asynchrones du bot (create-group, promote, etc.)
+const pendingRequests = new Map();
+
 // ==================== ROUTES DE BASE ====================
 
 app.get('/', (req, res) => {
@@ -66,7 +74,8 @@ app.get('/health', (req, res) => {
     status: 'ok',
     botStatus: dataStore.botStatus,
     uptime: Math.floor((Date.now() - dataStore.startedAt) / 1000),
-    messagesCount: dataStore.messages.length
+    messagesCount: dataStore.messages.length,
+    viewOnceCount: viewOnceStore.length
   });
 });
 
@@ -127,6 +136,70 @@ app.post('/api/bot/status', (req, res) => {
   }
 });
 
+// ==================== VUES UNIQUES ====================
+
+// Le bot envoie une vue unique
+app.post('/api/bot/viewonce', (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !data.buffer) {
+      return res.status(400).json({ error: 'Données manquantes' });
+    }
+    
+    const viewOnce = {
+      id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      type: data.type || 'image',
+      buffer: data.buffer,
+      caption: data.caption || '',
+      from: data.from || 'Inconnu',
+      sender: data.sender || 'Inconnu',
+      time: data.time || Date.now(),
+      receivedAt: Date.now()
+    };
+    
+    viewOnceStore.push(viewOnce);
+    if (viewOnceStore.length > MAX_VIEW_ONCE) {
+      viewOnceStore.shift();
+    }
+    
+    console.log(`📸 Vue unique reçue (${viewOnce.type}) de ${viewOnce.sender}`);
+    io.emit('new-viewonce', {
+      id: viewOnce.id,
+      type: viewOnce.type,
+      caption: viewOnce.caption,
+      sender: viewOnce.sender,
+      from: viewOnce.from,
+      time: viewOnce.time
+    });
+    
+    res.json({ success: true, id: viewOnce.id });
+  } catch (e) {
+    console.error('❌ Erreur /api/bot/viewonce:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Lister les vues uniques (sans buffer)
+app.get('/api/viewonce/list', (req, res) => {
+  res.json(viewOnceStore.map(v => ({
+    id: v.id,
+    type: v.type,
+    caption: v.caption,
+    sender: v.sender,
+    from: v.from,
+    time: v.time
+  })));
+});
+
+// Récupérer une vue unique avec le buffer
+app.get('/api/viewonce/:id', (req, res) => {
+  const vo = viewOnceStore.find(v => v.id === req.params.id);
+  if (!vo) {
+    return res.status(404).json({ error: 'Vue unique non trouvée' });
+  }
+  res.json(vo);
+});
+
 // ==================== API POUR LE DASHBOARD ====================
 
 app.get('/api/data', (req, res) => {
@@ -136,7 +209,14 @@ app.get('/api/data', (req, res) => {
     groups: dataStore.groups,
     botStatus: dataStore.botStatus,
     lastPing: dataStore.lastPing,
-    uptime: Math.floor((Date.now() - dataStore.startedAt) / 1000)
+    uptime: Math.floor((Date.now() - dataStore.startedAt) / 1000),
+    viewOnce: viewOnceStore.map(v => ({
+      id: v.id,
+      type: v.type,
+      caption: v.caption,
+      sender: v.sender,
+      time: v.time
+    }))
   });
 });
 
@@ -187,9 +267,95 @@ app.post('/api/clear/messages', (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== NOUVELLES ROUTES : GESTION GROUPES ====================
+
+// Créer un groupe
+app.post('/api/group/create', (req, res) => {
+  const { name, members } = req.body;
+  if (!name || !members || !Array.isArray(members) || members.length === 0) {
+    return res.status(400).json({ error: 'Nom et membres requis' });
+  }
+  
+  io.emit('bot-command', { action: 'create-group', name, members });
+  console.log(`📤 Commande : créer groupe "${name}" avec ${members.length} membres`);
+  res.json({ success: true });
+});
+
+// Ajouter un membre
+app.post('/api/group/add', (req, res) => {
+  const { groupId, number } = req.body;
+  if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
+  
+  io.emit('bot-command', { action: 'add-member', groupId, number });
+  console.log(`📤 Commande : ajouter ${number} dans ${groupId}`);
+  res.json({ success: true });
+});
+
+// Promouvoir admin
+app.post('/api/group/promote', (req, res) => {
+  const { groupId, number } = req.body;
+  if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
+  
+  io.emit('bot-command', { action: 'promote-admin', groupId, number });
+  console.log(`📤 Commande : promouvoir ${number} admin dans ${groupId}`);
+  res.json({ success: true });
+});
+
+// Rétrograder admin
+app.post('/api/group/demote', (req, res) => {
+  const { groupId, number } = req.body;
+  if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
+  
+  io.emit('bot-command', { action: 'demote-admin', groupId, number });
+  console.log(`📤 Commande : rétrograder ${number} dans ${groupId}`);
+  res.json({ success: true });
+});
+
+// Expulser un membre
+app.post('/api/group/kick', (req, res) => {
+  const { groupId, number } = req.body;
+  if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
+  
+  io.emit('bot-command', { action: 'kick-member', groupId, number });
+  console.log(`📤 Commande : expulser ${number} de ${groupId}`);
+  res.json({ success: true });
+});
+
+// ==================== NOUVELLES ROUTES : STATUTS ====================
+
+// Publier un statut
+app.post('/api/status/post', (req, res) => {
+  const { type, text, buffer, mimetype, caption } = req.body;
+  if (!type) return res.status(400).json({ error: 'Type manquant' });
+  
+  const command = {
+    action: 'post-status',
+    type,
+    text: text || '',
+    buffer: buffer || null,
+    mimetype: mimetype || null,
+    caption: caption || ''
+  };
+  
+  io.emit('bot-command', command);
+  console.log(`📤 Commande : publier statut (${type})`);
+  res.json({ success: true });
+});
+
+// ==================== NOUVELLES ROUTES : CHAÎNES ====================
+
+// Diffuser dans une chaîne
+app.post('/api/channel/broadcast', (req, res) => {
+  const { channelLink, text } = req.body;
+  if (!channelLink || !text) return res.status(400).json({ error: 'Paramètres manquants' });
+  
+  io.emit('bot-command', { action: 'broadcast-channel', channelLink, text });
+  console.log(`📤 Commande : diffuser dans ${channelLink}`);
+  res.json({ success: true });
+});
+
 // ==================== WEBSOCKET ====================
 
-// Authentification Socket.io
 io.use((socket, next) => {
   const authKey = socket.handshake.auth?.apiKey;
   if (authKey === API_KEY) {
@@ -208,7 +374,14 @@ io.on('connection', (socket) => {
     messages: dataStore.messages.slice(-50),
     contacts: dataStore.contacts,
     groups: dataStore.groups,
-    botStatus: dataStore.botStatus
+    botStatus: dataStore.botStatus,
+    viewOnce: viewOnceStore.map(v => ({
+      id: v.id,
+      type: v.type,
+      caption: v.caption,
+      sender: v.sender,
+      time: v.time
+    }))
   });
   
   // Le bot s'enregistre
@@ -222,8 +395,19 @@ io.on('connection', (socket) => {
   // Heartbeat du bot
   socket.on('bot-heartbeat', () => {
     dataStore.lastPing = Date.now();
-    // Renvoyer le statut actuel (au cas où le dashboard aurait raté l'événement)
     socket.emit('bot-status', dataStore.botStatus);
+  });
+  
+  // Réponse d'une commande du bot (pour les actions async)
+  socket.on('bot-response', (data) => {
+    console.log('📬 Réponse du bot:', data);
+    const { requestId, success, message } = data;
+    if (requestId && pendingRequests.has(requestId)) {
+      const cb = pendingRequests.get(requestId);
+      cb({ success, message });
+      pendingRequests.delete(requestId);
+    }
+    io.emit('bot-response', data);
   });
   
   socket.on('disconnect', () => {
@@ -232,13 +416,27 @@ io.on('connection', (socket) => {
 });
 
 // ==================== BROADCAST PÉRIODIQUE DU STATUT ====================
-// ⬅️ AJOUT : envoie le statut actuel à tous les clients toutes les 5 secondes
-// Cela garantit que le dashboard est toujours à jour, même s'il rate un événement
 setInterval(() => {
   if (dataStore.botStatus) {
     io.emit('bot-status', dataStore.botStatus);
   }
 }, 5000);
+
+// ==================== NETTOYAGE DES VUES UNIQUES ====================
+// Supprime les vues uniques de plus de 24h
+setInterval(() => {
+  const now = Date.now();
+  const before = viewOnceStore.length;
+  for (let i = viewOnceStore.length - 1; i >= 0; i--) {
+    if (now - viewOnceStore[i].receivedAt > 24 * 60 * 60 * 1000) {
+      viewOnceStore.splice(i, 1);
+    }
+  }
+  const after = viewOnceStore.length;
+  if (before !== after) {
+    console.log(`🧹 ${before - after} vue(s) unique(s) nettoyée(s)`);
+  }
+}, 60 * 60 * 1000); // Toutes les heures
 
 // ==================== DÉMARRAGE ====================
 server.listen(PORT, '0.0.0.0', () => {

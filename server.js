@@ -9,7 +9,7 @@ const path = require('path');
 // ==================== CONFIGURATION ====================
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || 'hexgate-secret-2026'; // ⚠️ Changez cette clé !
-const STATIC_FOLDER = 'publique'; // ⚠️ Correspond au nom du dossier sur GitHub
+const STATIC_FOLDER = 'public'; // ⚠️ Correspond au nom du dossier sur GitHub
 
 // ==================== INITIALISATION ====================
 const app = express();

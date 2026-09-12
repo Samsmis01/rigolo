@@ -119,7 +119,6 @@
     <div class="tab" data-tab="actions">⚡ Actions</div>
   </div>
 
-  <!-- ONGLET MESSAGES -->
   <div class="tab-content active" id="tab-messages">
     <div class="card">
       <h3>📩 Messages reçus en temps réel</h3>
@@ -129,7 +128,6 @@
     </div>
   </div>
 
-  <!-- ONGLET CONTACTS -->
   <div class="tab-content" id="tab-contacts">
     <div class="card">
       <h3>👥 Contacts du bot (<span id="contactsCount">0</span>)</h3>
@@ -139,7 +137,6 @@
     </div>
   </div>
 
-  <!-- ONGLET GROUPES -->
   <div class="tab-content" id="tab-groups">
     <div class="card">
       <h3>📋 Groupes du bot (<span id="groupsCount">0</span>)</h3>
@@ -149,7 +146,6 @@
     </div>
   </div>
 
-  <!-- ONGLET ACTIONS -->
   <div class="tab-content" id="tab-actions">
     <div class="grid">
       <div class="card">
@@ -183,10 +179,34 @@
   </div>
 
   <script>
-    const socket = io();
+    // ==================== RÉCUPÉRATION DE LA CLÉ API ====================
+    // ⬅️ AJOUT : récupère la clé depuis l'URL ou localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    const API_KEY = urlParams.get('key') || localStorage.getItem('apiKey') || 'xenoban-secret-2026';
+    localStorage.setItem('apiKey', API_KEY); // Sauvegarde pour les prochaines visites
+    
+    console.log('🔑 Clé API utilisée:', API_KEY.substring(0, 4) + '...' + API_KEY.slice(-4));
+
+    // ==================== CONNEXION SOCKET.IO AVEC AUTH ====================
+    // ⬅️ MODIFIÉ : envoie la clé API lors de la connexion
+    const socket = io({
+      auth: { apiKey: API_KEY }
+    });
+
+    // ⬅️ AJOUT : log de connexion
+    socket.on('connect', () => {
+      console.log('🖥️ Connecté au serveur WebSocket');
+    });
+
+    // ⬅️ AJOUT : gestion des erreurs
+    socket.on('connect_error', (err) => {
+      console.error('❌ Erreur de connexion WebSocket:', err.message);
+      updateBotStatus('deconnecte');
+    });
 
     // ==================== INITIALISATION ====================
     socket.on('init', (data) => {
+      console.log('📦 Données initiales reçues:', data);
       updateBotStatus(data.botStatus);
       renderContacts(data.contacts);
       renderGroups(data.groups);
@@ -195,20 +215,29 @@
 
     // ==================== ÉVÉNEMENTS TEMPS RÉEL ====================
     socket.on('new-message', (msg) => {
+      console.log('📩 Nouveau message:', msg);
       addMessage(msg);
       document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
     });
 
     socket.on('contacts-update', (contacts) => {
+      console.log('👥 Contacts mis à jour:', contacts.length);
       renderContacts(contacts);
     });
 
     socket.on('groups-update', (groups) => {
+      console.log('📋 Groupes mis à jour:', groups.length);
       renderGroups(groups);
     });
 
     socket.on('bot-status', (status) => {
+      console.log('🤖 Statut bot reçu:', status);
       updateBotStatus(status);
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    });
+
+    socket.on('messages-cleared', () => {
+      document.getElementById('messagesList').innerHTML = '<p style="color: #6b7280;">Historique vidé.</p>';
     });
 
     // ==================== AFFICHAGE ====================
@@ -291,41 +320,52 @@
     }
 
     // ==================== ACTIONS ====================
+    // ⬅️ AJOUT : fonction utilitaire avec la clé API
+    async function apiCall(endpoint, data) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY  // ⬅️ Ajout de la clé API
+          },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Erreur inconnue');
+        return json;
+      } catch (e) {
+        alert('❌ ' + e.message);
+        return null;
+      }
+    }
+
     async function sendMessage() {
       const to = document.getElementById('msgTo').value.trim();
       const text = document.getElementById('msgText').value.trim();
       if (!to || !text) return alert('Remplissez tous les champs');
       
-      await fetch('/api/send/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, text })
-      });
-      alert('✅ Commande envoyée !');
+      const res = await apiCall('/api/send/message', { to, text });
+      if (res) {
+        alert('✅ Commande envoyée !');
+        document.getElementById('msgText').value = '';
+      }
     }
 
     async function joinGroup() {
       const inviteCode = document.getElementById('groupLink').value.trim();
       if (!inviteCode) return alert('Entrez un lien');
       
-      await fetch('/api/join/group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviteCode })
-      });
-      alert('✅ Commande envoyée !');
+      const res = await apiCall('/api/join/group', { inviteCode });
+      if (res) alert('✅ Commande envoyée !');
     }
 
     async function joinChannel() {
       const channelLink = document.getElementById('channelLink').value.trim();
       if (!channelLink) return alert('Entrez un lien');
       
-      await fetch('/api/join/channel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelLink })
-      });
-      alert('✅ Commande envoyée !');
+      const res = await apiCall('/api/join/channel', { channelLink });
+      if (res) alert('✅ Commande envoyée !');
     }
 
     async function sendGroupMessage() {
@@ -333,12 +373,11 @@
       const text = document.getElementById('groupMsgText').value.trim();
       if (!groupId || !text) return alert('Choisissez un groupe et entrez un message');
       
-      await fetch('/api/send/group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId, text })
-      });
-      alert('✅ Commande envoyée !');
+      const res = await apiCall('/api/send/group', { groupId, text });
+      if (res) {
+        alert('✅ Commande envoyée !');
+        document.getElementById('groupMsgText').value = '';
+      }
     }
 
     function escapeHtml(text) {
@@ -356,6 +395,14 @@
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
       });
     });
+
+    // ==================== HEARTBEAT ====================
+    // ⬅️ AJOUT : envoie un ping toutes les 30s pour maintenir la connexion
+    setInterval(() => {
+      if (socket.connected) {
+        socket.emit('bot-heartbeat');
+      }
+    }, 30000);
   </script>
 </body>
 </html>

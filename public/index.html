@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XENOBAN Dashboard</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #0a0e27;
+      color: #e0e0e0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    h1 { color: #4ade80; margin-bottom: 20px; font-size: 1.5em; }
+    .status-bar {
+      background: #1a1f3a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: 0.3s;
+    }
+    .dot.online { background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+    .card {
+      background: #1a1f3a;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .card h3 { color: #fbbf24; margin-bottom: 10px; font-size: 1em; }
+    .list {
+      max-height: 250px;
+      overflow-y: auto;
+      background: #0a0e27;
+      border-radius: 6px;
+      padding: 10px;
+    }
+    .item {
+      padding: 8px;
+      border-bottom: 1px solid #2a3050;
+      font-size: 0.85em;
+    }
+    .item:last-child { border-bottom: none; }
+    .item .from { color: #4ade80; font-weight: bold; }
+    .item .body { color: #c0c0c0; margin-top: 3px; word-break: break-word; }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      background: #0a0e27;
+      border: 1px solid #2a3050;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 0.9em;
+    }
+    button {
+      padding: 12px 20px;
+      background: #4ade80;
+      color: #0a0e27;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 5px;
+      transition: 0.2s;
+    }
+    button:hover { background: #22c55e; }
+    button:disabled { background: #4a5568; cursor: not-allowed; }
+    .debug {
+      background: #1a1f3a;
+      padding: 10px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.75em;
+      color: #6b7280;
+      margin-top: 10px;
+      word-break: break-all;
+    }
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a1f3a;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border-left: 4px solid #4ade80;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      z-index: 9999;
+      display: none;
+      max-width: 90%;
+      font-size: 0.9em;
+    }
+    .toast.error { border-left-color: #ef4444; }
+    .toast.show { display: block; animation: slideDown 0.3s ease; }
+    @keyframes slideDown {
+      from { transform: translate(-50%, -20px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🤖 XENOBAN Dashboard</h1>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="statusText">Connexion...</span>
+    <span style="margin-left: auto; font-size: 0.8em; color: #6b7280;" id="lastUpdate">-</span>
+  </div>
+
+  <div class="card">
+    <h3>📋 Groupes (<span id="gCount">0</span>)</h3>
+    <div class="list" id="groupsList">Chargement...</div>
+  </div>
+
+  <div class="card">
+    <h3>📩 Messages (<span id="mCount">0</span>)</h3>
+    <div class="list" id="messagesList">Chargement...</div>
+  </div>
+
+  <div class="card">
+    <h3>⚡ Actions</h3>
+    <div class="grid">
+      <div>
+        <label style="font-size:0.85em; color:#94a3b8;">💬 Envoyer un message</label>
+        <input type="text" id="msgTo" placeholder="Numéro (ex: 243983205767)">
+        <textarea id="msgText" rows="2" placeholder="Message..."></textarea>
+        <button onclick="sendMessage()">📤 Envoyer</button>
+      </div>
+      <div>
+        <label style="font-size:0.85em; color:#94a3b8;">🔗 Rejoindre un groupe</label>
+        <input type="text" id="groupLink" placeholder="https://chat.whatsapp.com/...">
+        <button onclick="joinGroup()">➕ Rejoindre</button>
+      </div>
+      <div>
+        <label style="font-size:0.85em; color:#94a3b8;">📢 Rejoindre une chaîne</label>
+        <input type="text" id="channelLink" placeholder="https://whatsapp.com/channel/...">
+        <button onclick="joinChannel()">➕ Rejoindre</button>
+      </div>
+      <div>
+        <label style="font-size:0.85em; color:#94a3b8;">📨 Envoyer dans un groupe</label>
+        <select id="groupSelect"><option value="">-- Choisir un groupe --</option></select>
+        <textarea id="groupMsgText" rows="2" placeholder="Message..."></textarea>
+        <button onclick="sendGroupMessage()">📤 Envoyer</button>
+      </div>
+      <div>
+        <label style="font-size:0.85em; color:#94a3b8;">🚪 Quitter un groupe</label>
+        <select id="leaveGroupSelect"><option value="">-- Choisir un groupe --</option></select>
+        <button onclick="leaveGroup()" style="background:#ef4444; color:white;">🚪 Quitter</button>
+      </div>
+    </div>
+  </div>
+
+  <button onclick="refreshData()">🔄 Rafraîchir maintenant</button>
+
+  <div class="debug" id="debug">Debug: en attente...</div>
+
+  <script>
+    // ==================== CONFIGURATION ====================
+    const API_KEY = 'xenoban-secret-2026';
+    const API_URL = '/api/data';
+    let attempts = 0;
+
+    // ==================== TOAST ====================
+    function toast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (isError ? ' error' : '');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { t.className = 'toast'; }, 3000);
+    }
+
+    // ==================== API CALLS ====================
+    async function apiCall(endpoint, data) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY
+          },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+        return json;
+      } catch (e) {
+        console.error('API Error:', e);
+        toast('❌ ' + e.message, true);
+        return null;
+      }
+    }
+
+    // ==================== WEBSOCKET ====================
+    const socket = io({ auth: { apiKey: API_KEY } });
+    
+    socket.on('connect', () => {
+      console.log('🔗 WebSocket connecté');
+      socket.emit('bot-register');
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('⚠️ WebSocket erreur:', err.message);
+    });
+
+    socket.on('init', (data) => {
+      console.log('📦 Init reçu');
+      updateStatus(data.botStatus);
+      renderGroups(data.groups);
+      renderMessages(data.messages);
+    });
+
+    socket.on('bot-status', (status) => {
+      console.log('🤖 Statut bot:', status);
+      updateStatus(status);
+    });
+
+    socket.on('new-message', (msg) => {
+      console.log('📩 Message temps réel:', msg);
+      addMessageToTop(msg);
+    });
+
+    socket.on('groups-update', renderGroups);
+    socket.on('contacts-update', () => {});
+    
+    // Heartbeat toutes les 30s
+    setInterval(() => {
+      if (socket.connected) socket.emit('bot-heartbeat');
+    }, 30000);
+
+    // ==================== RENDU ====================
+    function updateStatus(status) {
+      const dot = document.getElementById('dot');
+      const text = document.getElementById('statusText');
+      if (status === 'connecte') {
+        dot.classList.add('online');
+        text.textContent = '🟢 Bot connecté';
+        text.style.color = '#4ade80';
+      } else {
+        dot.classList.remove('online');
+        text.textContent = '🔴 Bot déconnecté';
+        text.style.color = '#ef4444';
+      }
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    }
+
+    function renderGroups(groups) {
+      document.getElementById('gCount').textContent = groups?.length || 0;
+      const list = document.getElementById('groupsList');
+      const select = document.getElementById('groupSelect');
+      const leaveSelect = document.getElementById('leaveGroupSelect');
+      
+      list.innerHTML = '';
+      select.innerHTML = '<option value="">-- Choisir un groupe --</option>';
+      leaveSelect.innerHTML = '<option value="">-- Choisir un groupe --</option>';
+      
+      if (!groups || groups.length === 0) {
+        list.innerHTML = '<div class="item">Aucun groupe</div>';
+        return;
+      }
+      
+      groups.forEach(g => {
+        // Liste
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<div class="from">${g.subject || '?'}</div><div class="body" style="font-size:0.75em; color:#6b7280;">${g.id}</div>`;
+        list.appendChild(div);
+        
+        // Select pour envoyer
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = g.subject;
+        select.appendChild(opt);
+        
+        // Select pour quitter
+        const opt2 = document.createElement('option');
+        opt2.value = g.id;
+        opt2.textContent = g.subject;
+        leaveSelect.appendChild(opt2);
+      });
+    }
+
+    function renderMessages(messages) {
+      document.getElementById('mCount').textContent = messages?.length || 0;
+      const list = document.getElementById('messagesList');
+      list.innerHTML = '';
+      
+      if (!messages || messages.length === 0) {
+        list.innerHTML = '<div class="item">Aucun message</div>';
+        return;
+      }
+      
+      messages.slice().reverse().forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<div class="from">${m.from || '?'}</div><div class="body">${escapeHtml(m.body || '(média)')}</div>`;
+        list.appendChild(div);
+      });
+    }
+
+    function addMessageToTop(msg) {
+      const list = document.getElementById('messagesList');
+      if (list.querySelector('.item')?.textContent === 'Aucun message') list.innerHTML = '';
+      
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<div class="from">${msg.from || '?'}</div><div class="body">${escapeHtml(msg.body || '(média)')}</div>`;
+      list.prepend(div);
+      
+      const count = parseInt(document.getElementById('mCount').textContent) + 1;
+      document.getElementById('mCount').textContent = count;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================== REFRESH HTTP ====================
+    async function refreshData() {
+      attempts++;
+      const debugEl = document.getElementById('debug');
+      
+      try {
+        const res = await fetch(API_URL, {
+          headers: { 'x-api-key': API_KEY }
+        });
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        debugEl.textContent = `✅ Tentative #${attempts} - ${data.botStatus} - ${data.messages?.length || 0} messages - ${data.groups?.length || 0} groupes`;
+        
+        updateStatus(data.botStatus);
+        renderGroups(data.groups);
+        renderMessages(data.messages);
+        
+      } catch (e) {
+        debugEl.textContent = `❌ Tentative #${attempts} - ${e.message}`;
+      }
+    }
+
+    // ==================== ACTIONS ====================
+    async function sendMessage() {
+      const to = document.getElementById('msgTo').value.trim();
+      const text = document.getElementById('msgText').value.trim();
+      if (!to || !text) return toast('Remplissez tous les champs', true);
+      
+      const res = await apiCall('/api/send/message', { to, text });
+      if (res) {
+        toast('✅ Message envoyé !');
+        document.getElementById('msgText').value = '';
+      }
+    }
+
+    async function joinGroup() {
+      const link = document.getElementById('groupLink').value.trim();
+      if (!link) return toast('Entrez un lien', true);
+      
+      const res = await apiCall('/api/join/group', { inviteCode: link });
+      if (res) {
+        toast('✅ Groupe rejoint !');
+        document.getElementById('groupLink').value = '';
+        setTimeout(refreshData, 2000);
+      }
+    }
+
+    async function joinChannel() {
+      const link = document.getElementById('channelLink').value.trim();
+      if (!link) return toast('Entrez un lien', true);
+      
+      const res = await apiCall('/api/join/channel', { channelLink: link });
+      if (res) {
+        toast('✅ Chaîne rejointe !');
+        document.getElementById('channelLink').value = '';
+      }
+    }
+
+    async function sendGroupMessage() {
+      const groupId = document.getElementById('groupSelect').value;
+      const text = document.getElementById('groupMsgText').value.trim();
+      if (!groupId || !text) return toast('Choisissez un groupe', true);
+      
+      const res = await apiCall('/api/send/group', { groupId, text });
+      if (res) {
+        toast('✅ Message envoyé au groupe !');
+        document.getElementById('groupMsgText').value = '';
+      }
+    }
+
+    async function leaveGroup() {
+      const groupId = document.getElementById('leaveGroupSelect').value;
+      if (!groupId) return toast('Choisissez un groupe', true);
+      if (!confirm('Voulez-vous vraiment quitter ce groupe ?')) return;
+      
+      const res = await apiCall('/api/leave/group', { groupId });
+      if (res) {
+        toast('✅ Groupe quitté !');
+        setTimeout(refreshData, 2000);
+      }
+    }
+
+    // ==================== DÉMARRAGE ====================
+    refreshData();
+    setInterval(refreshData, 3000);
+  </script>
+</body>
+</html>

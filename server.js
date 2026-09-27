@@ -60,7 +60,6 @@ const viewOnceStore = [];
 const MAX_VIEW_ONCE = 50;
 
 // ==================== STOCKAGE DES REQUÊTES EN ATTENTE ====================
-// Pour les réponses asynchrones du bot (create-group, promote, etc.)
 const pendingRequests = new Map();
 
 // ==================== ROUTES DE BASE ====================
@@ -138,7 +137,6 @@ app.post('/api/bot/status', (req, res) => {
 
 // ==================== VUES UNIQUES ====================
 
-// Le bot envoie une vue unique
 app.post('/api/bot/viewonce', (req, res) => {
   try {
     const data = req.body;
@@ -179,7 +177,6 @@ app.post('/api/bot/viewonce', (req, res) => {
   }
 });
 
-// Lister les vues uniques (sans buffer)
 app.get('/api/viewonce/list', (req, res) => {
   res.json(viewOnceStore.map(v => ({
     id: v.id,
@@ -191,7 +188,6 @@ app.get('/api/viewonce/list', (req, res) => {
   })));
 });
 
-// Récupérer une vue unique avec le buffer
 app.get('/api/viewonce/:id', (req, res) => {
   const vo = viewOnceStore.find(v => v.id === req.params.id);
   if (!vo) {
@@ -267,9 +263,8 @@ app.post('/api/clear/messages', (req, res) => {
   res.json({ success: true });
 });
 
-// ==================== NOUVELLES ROUTES : GESTION GROUPES ====================
+// ==================== GESTION GROUPES ====================
 
-// Créer un groupe
 app.post('/api/group/create', (req, res) => {
   const { name, members } = req.body;
   if (!name || !members || !Array.isArray(members) || members.length === 0) {
@@ -281,7 +276,6 @@ app.post('/api/group/create', (req, res) => {
   res.json({ success: true });
 });
 
-// Ajouter un membre
 app.post('/api/group/add', (req, res) => {
   const { groupId, number } = req.body;
   if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -291,7 +285,6 @@ app.post('/api/group/add', (req, res) => {
   res.json({ success: true });
 });
 
-// Promouvoir admin
 app.post('/api/group/promote', (req, res) => {
   const { groupId, number } = req.body;
   if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -301,7 +294,6 @@ app.post('/api/group/promote', (req, res) => {
   res.json({ success: true });
 });
 
-// Rétrograder admin
 app.post('/api/group/demote', (req, res) => {
   const { groupId, number } = req.body;
   if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -311,7 +303,6 @@ app.post('/api/group/demote', (req, res) => {
   res.json({ success: true });
 });
 
-// Expulser un membre
 app.post('/api/group/kick', (req, res) => {
   const { groupId, number } = req.body;
   if (!groupId || !number) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -321,9 +312,44 @@ app.post('/api/group/kick', (req, res) => {
   res.json({ success: true });
 });
 
-// ==================== NOUVELLES ROUTES : STATUTS ====================
+// ==================== ACTIONS GLOBALES ====================
 
-// Publier un statut
+// Ajouter un membre dans TOUS les groupes où je suis admin
+app.post('/api/group/add-all', (req, res) => {
+  const { number } = req.body;
+  if (!number) return res.status(400).json({ error: 'Numéro manquant' });
+  
+  const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  
+  io.emit('bot-command', { 
+    action: 'add-member-all-groups', 
+    number,
+    taskId 
+  });
+  
+  console.log(`📤 Commande GLOBALE [${taskId}] : ajouter ${number} dans tous les groupes où admin`);
+  res.json({ success: true, taskId });
+});
+
+// Promouvoir un numéro admin dans TOUS les groupes où je suis admin
+app.post('/api/group/promote-all', (req, res) => {
+  const { number } = req.body;
+  if (!number) return res.status(400).json({ error: 'Numéro manquant' });
+  
+  const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  
+  io.emit('bot-command', { 
+    action: 'promote-admin-all-groups', 
+    number,
+    taskId 
+  });
+  
+  console.log(`📤 Commande GLOBALE [${taskId}] : promouvoir ${number} admin dans tous les groupes où admin`);
+  res.json({ success: true, taskId });
+});
+
+// ==================== STATUTS ====================
+
 app.post('/api/status/post', (req, res) => {
   const { type, text, buffer, mimetype, caption } = req.body;
   if (!type) return res.status(400).json({ error: 'Type manquant' });
@@ -342,9 +368,8 @@ app.post('/api/status/post', (req, res) => {
   res.json({ success: true });
 });
 
-// ==================== NOUVELLES ROUTES : CHAÎNES ====================
+// ==================== CHAÎNES ====================
 
-// Diffuser dans une chaîne
 app.post('/api/channel/broadcast', (req, res) => {
   const { channelLink, text } = req.body;
   if (!channelLink || !text) return res.status(400).json({ error: 'Paramètres manquants' });
@@ -369,7 +394,6 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log(`🖥️ Client connecté : ${socket.id}`);
   
-  // Envoyer les données actuelles au nouveau client
   socket.emit('init', {
     messages: dataStore.messages.slice(-50),
     contacts: dataStore.contacts,
@@ -384,7 +408,6 @@ io.on('connection', (socket) => {
     }))
   });
   
-  // Le bot s'enregistre
   socket.on('bot-register', () => {
     dataStore.botStatus = 'connecte';
     dataStore.lastPing = Date.now();
@@ -392,13 +415,24 @@ io.on('connection', (socket) => {
     console.log('🤖 Bot enregistré');
   });
   
-  // Heartbeat du bot
   socket.on('bot-heartbeat', () => {
     dataStore.lastPing = Date.now();
     socket.emit('bot-status', dataStore.botStatus);
   });
   
-  // Réponse d'une commande du bot (pour les actions async)
+  // ⬇️ NOUVEAU : Progression des tâches de masse (bulk)
+  // Le bot envoie après CHAQUE groupe : { taskId, action, current, total, groupName, success, done }
+  socket.on('bulk-progress', (data) => {
+    console.log(`📊 Progression [${data.taskId}] ${data.current}/${data.total} - ${data.groupName || ''} ${data.success ? '✅' : '❌'}`);
+    io.emit('bulk-progress', data);
+  });
+
+  // Le bot signale la fin d'une tâche de masse
+  socket.on('bulk-done', (data) => {
+    console.log(`✅ Tâche terminée [${data.taskId}] : ${data.ok} succès, ${data.fail} échecs`);
+    io.emit('bulk-done', data);
+  });
+  
   socket.on('bot-response', (data) => {
     console.log('📬 Réponse du bot:', data);
     const { requestId, success, message } = data;
@@ -423,7 +457,6 @@ setInterval(() => {
 }, 5000);
 
 // ==================== NETTOYAGE DES VUES UNIQUES ====================
-// Supprime les vues uniques de plus de 24h
 setInterval(() => {
   const now = Date.now();
   const before = viewOnceStore.length;
@@ -436,7 +469,7 @@ setInterval(() => {
   if (before !== after) {
     console.log(`🧹 ${before - after} vue(s) unique(s) nettoyée(s)`);
   }
-}, 60 * 60 * 1000); // Toutes les heures
+}, 60 * 60 * 1000);
 
 // ==================== DÉMARRAGE ====================
 server.listen(PORT, '0.0.0.0', () => {
@@ -448,7 +481,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('════════════════════════════════════════════');
 });
 
-// Gestion propre de l'arrêt
 process.on('SIGTERM', () => {
   console.log('🛑 Arrêt du serveur...');
   server.close(() => process.exit(0));

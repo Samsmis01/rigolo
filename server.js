@@ -11,6 +11,9 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.API_KEY || 'xenoban-secret-2026';
 const STATIC_FOLDER = 'public';
 
+// Timeout heartbeat bot (ms) : si aucun heartbeat reçu pendant ce délai → déconnecté
+const BOT_HEARTBEAT_TIMEOUT = 90 * 1000;
+
 // ==================== INITIALISATION ====================
 const app = express();
 const server = http.createServer(app);
@@ -50,6 +53,7 @@ const dataStore = {
   statuses: [],
   botStatus: 'deconnecte',
   lastPing: null,
+  botSocketId: null,
   startedAt: Date.now()
 };
 
@@ -61,6 +65,15 @@ const MAX_VIEW_ONCE = 50;
 
 // ==================== STOCKAGE DES REQUÊTES EN ATTENTE ====================
 const pendingRequests = new Map();
+
+// ==================== HELPER : normalise le body des groupes ====================
+// Accepte : { groups: [...] } OU directement [...]
+function normalizeGroups(body) {
+  if (!body) return [];
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body.groups)) return body.groups;
+  return [];
+}
 
 // ==================== ROUTES DE BASE ====================
 
@@ -74,7 +87,9 @@ app.get('/health', (req, res) => {
     botStatus: dataStore.botStatus,
     uptime: Math.floor((Date.now() - dataStore.startedAt) / 1000),
     messagesCount: dataStore.messages.length,
-    viewOnceCount: viewOnceStore.length
+    groupsCount: dataStore.groups.length,
+    viewOnceCount: viewOnceStore.length,
+    lastPingAgo: dataStore.lastPing ? Math.round((Date.now() - dataStore.lastPing) / 1000) + 's' : null
   });
 });
 
@@ -103,7 +118,8 @@ app.post('/api/bot/message', (req, res) => {
 
 app.post('/api/bot/contacts', (req, res) => {
   try {
-    dataStore.contacts = req.body.contacts || [];
+    const body = req.body;
+    dataStore.contacts = Array.isArray(body) ? body : (body.contacts || []);
     console.log(`👥 ${dataStore.contacts.length} contacts reçus`);
     io.emit('contacts-update', dataStore.contacts);
     res.json({ success: true });
@@ -112,23 +128,53 @@ app.post('/api/bot/contacts', (req, res) => {
   }
 });
 
+// ⬇️ ROUTE CORRIGÉE : accepte les deux formats + logs détaillés
 app.post('/api/bot/groups', (req, res) => {
   try {
-    dataStore.groups = req.body.groups || [];
-    console.log(`📋 ${dataStore.groups.length} groupes reçus`);
+    const groups = normalizeGroups(req.body);
+    
+    console.log(`📋 Réception groupes : ${groups.length} (depuis ${req.ip})`);
+    
+    if (!groups.length) {
+      console.warn('⚠️ Aucun groupe dans le body reçu. Body =', JSON.stringify(req.body).slice(0, 200));
+      return res.status(400).json({ 
+        error: 'Aucun groupe fourni',
+        hint: 'Envoyez { groups: [...] } ou [...] directement'
+      });
+    }
+    
+    dataStore.groups = groups;
+    
+    // Marque le bot comme vivant à chaque envoi de groupes (fallback heartbeat)
+    if (dataStore.botStatus !== 'connecte') {
+      dataStore.botStatus = 'connecte';
+      io.emit('bot-status', 'connecte');
+      console.log('🤖 Bot marqué connecté (via /api/bot/groups)');
+    }
+    dataStore.lastPing = Date.now();
+    
     io.emit('groups-update', dataStore.groups);
-    res.json({ success: true });
+    res.json({ success: true, count: groups.length });
   } catch (e) {
+    console.error('❌ Erreur /api/bot/groups:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
+// ⬇️ ROUTE CORRIGÉE : accepte aussi le format {status:"..."} ou "connecte"
 app.post('/api/bot/status', (req, res) => {
   try {
-    dataStore.botStatus = req.body.status || 'inconnu';
+    const body = req.body;
+    let status;
+    
+    if (typeof body === 'string') status = body;
+    else if (body && typeof body.status === 'string') status = body.status;
+    else status = 'inconnu';
+    
+    dataStore.botStatus = status;
     dataStore.lastPing = Date.now();
-    io.emit('bot-status', dataStore.botStatus);
-    console.log(`🤖 Statut bot mis à jour : ${dataStore.botStatus}`);
+    io.emit('bot-status', status);
+    console.log(`🤖 Statut bot mis à jour : ${status}`);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -145,7 +191,7 @@ app.post('/api/bot/viewonce', (req, res) => {
     }
     
     const viewOnce = {
-      id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 11),
       type: data.type || 'image',
       buffer: data.buffer,
       caption: data.caption || '',
@@ -314,7 +360,6 @@ app.post('/api/group/kick', (req, res) => {
 
 // ==================== ACTIONS GLOBALES ====================
 
-// Ajouter un membre dans TOUS les groupes où je suis admin
 app.post('/api/group/add-all', (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ error: 'Numéro manquant' });
@@ -331,7 +376,6 @@ app.post('/api/group/add-all', (req, res) => {
   res.json({ success: true, taskId });
 });
 
-// Promouvoir un numéro admin dans TOUS les groupes où je suis admin
 app.post('/api/group/promote-all', (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ error: 'Numéro manquant' });
@@ -394,6 +438,7 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log(`🖥️ Client connecté : ${socket.id}`);
   
+  // Envoyer les données actuelles au nouveau client
   socket.emit('init', {
     messages: dataStore.messages.slice(-50),
     contacts: dataStore.contacts,
@@ -408,31 +453,41 @@ io.on('connection', (socket) => {
     }))
   });
   
+  // Le bot s'enregistre
   socket.on('bot-register', () => {
+    dataStore.botSocketId = socket.id;
     dataStore.botStatus = 'connecte';
     dataStore.lastPing = Date.now();
     io.emit('bot-status', 'connecte');
-    console.log('🤖 Bot enregistré');
+    console.log(`🤖 Bot enregistré (socket ${socket.id})`);
   });
   
+  // Heartbeat du bot
   socket.on('bot-heartbeat', () => {
     dataStore.lastPing = Date.now();
-    socket.emit('bot-status', dataStore.botStatus);
+    
+    // Si le bot était marqué déconnecté mais qu'il envoie un heartbeat → on le remet connecté
+    if (dataStore.botStatus !== 'connecte') {
+      dataStore.botStatus = 'connecte';
+      dataStore.botSocketId = socket.id;
+      io.emit('bot-status', 'connecte');
+      console.log('🤖 Bot reconnecté (heartbeat reçu)');
+    }
   });
   
-  // ⬇️ NOUVEAU : Progression des tâches de masse (bulk)
-  // Le bot envoie après CHAQUE groupe : { taskId, action, current, total, groupName, success, done }
+  // Progression des tâches de masse
   socket.on('bulk-progress', (data) => {
     console.log(`📊 Progression [${data.taskId}] ${data.current}/${data.total} - ${data.groupName || ''} ${data.success ? '✅' : '❌'}`);
     io.emit('bulk-progress', data);
   });
 
-  // Le bot signale la fin d'une tâche de masse
+  // Fin de tâche de masse
   socket.on('bulk-done', (data) => {
     console.log(`✅ Tâche terminée [${data.taskId}] : ${data.ok} succès, ${data.fail} échecs`);
     io.emit('bulk-done', data);
   });
   
+  // Réponse du bot aux commandes async
   socket.on('bot-response', (data) => {
     console.log('📬 Réponse du bot:', data);
     const { requestId, success, message } = data;
@@ -444,17 +499,50 @@ io.on('connection', (socket) => {
     io.emit('bot-response', data);
   });
   
+  // ⬇️ Le bot peut aussi envoyer ses groupes via Socket.IO (fallback)
+  socket.on('bot-groups', (groups) => {
+    const list = Array.isArray(groups) ? groups : (groups?.groups || []);
+    if (!list.length) return;
+    
+    dataStore.groups = list;
+    dataStore.lastPing = Date.now();
+    
+    if (dataStore.botStatus !== 'connecte') {
+      dataStore.botStatus = 'connecte';
+      dataStore.botSocketId = socket.id;
+      io.emit('bot-status', 'connecte');
+    }
+    
+    io.emit('groups-update', dataStore.groups);
+    console.log(`📋 ${list.length} groupes reçus via Socket.IO`);
+  });
+  
   socket.on('disconnect', () => {
     console.log(`🖥️ Client déconnecté : ${socket.id}`);
+    
+    // Si c'est la socket du bot qui se déconnecte → statut = déconnecté
+    if (socket.id === dataStore.botSocketId) {
+      dataStore.botSocketId = null;
+      dataStore.botStatus = 'deconnecte';
+      io.emit('bot-status', 'deconnecte');
+      console.log('🔴 Bot déconnecté (socket fermée)');
+    }
   });
 });
 
-// ==================== BROADCAST PÉRIODIQUE DU STATUT ====================
+// ==================== DÉTECTION DE TIMEOUT DU BOT ====================
+// Si aucun heartbeat reçu depuis BOT_HEARTBEAT_TIMEOUT → bot marqué déconnecté
 setInterval(() => {
-  if (dataStore.botStatus) {
-    io.emit('bot-status', dataStore.botStatus);
+  if (dataStore.botStatus === 'connecte' && dataStore.lastPing) {
+    const elapsed = Date.now() - dataStore.lastPing;
+    if (elapsed > BOT_HEARTBEAT_TIMEOUT) {
+      console.log(`⏱️ Bot inactif depuis ${Math.round(elapsed / 1000)}s → marqué déconnecté`);
+      dataStore.botStatus = 'deconnecte';
+      dataStore.botSocketId = null;
+      io.emit('bot-status', 'deconnecte');
+    }
   }
-}, 5000);
+}, 15000);
 
 // ==================== NETTOYAGE DES VUES UNIQUES ====================
 setInterval(() => {
@@ -477,6 +565,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur de contrôle démarré sur le port ${PORT}`);
   console.log(`📊 Dashboard : http://localhost:${PORT}/${STATIC_FOLDER}/dashboard.html`);
   console.log(`🔑 Clé API : ${API_KEY.substring(0, 4)}...${API_KEY.substring(API_KEY.length - 4)}`);
+  console.log(`⏱️ Heartbeat timeout : ${BOT_HEARTBEAT_TIMEOUT / 1000}s`);
   console.log(`📁 Dossier statique : ${STATIC_FOLDER}/`);
   console.log('════════════════════════════════════════════');
 });
